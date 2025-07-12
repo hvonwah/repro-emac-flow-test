@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15869558.svg)](https://doi.org/10.5281/zenodo.15869558)
+
 # Reproduction Code
 
 This repository contains the scripts to reproduce the numerical examples presented in the paper *Benchmark stress tests for flow past a cylinder at higher Reynolds numbers using EMAC* by H. von Wahl, Leo G. Rebholz and L. Ridgway Scott.
