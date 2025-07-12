@@ -1,0 +1,375 @@
+// Discrete Filter
+// remark: the sign of p is correct 
+
+verbosity = 0;
+
+load "Element_P3" // NEED THIS LINE TO USE P3 ELEMENTS
+//real s0=clock();
+
+
+/**************************************************/
+/***** domain/mesh for cylinder problem  **************/
+border floorC(t=0,80){x=t;y=0;label=1;};
+border floor(t=80,300){x=t;y=0;label=11;};
+border right(t=0,60){x=300;y=t;label=4;};
+border ceiling(t=300,80){x=t;y=60;label=5;};
+border ceilingC(t=80,0){x=t;y=60;label=111;};
+border left(t=60,0){x=0;y=t;label=8;};
+border C(t=0,2*pi){  x = 30+cos(t); y = 30+sin(t); label=99;}
+
+
+// 61,694 velocity dof mesh
+int nNS1=35,nNS=50,mNS=12,mNS1=20,nCNS=250;
+mesh Th= buildmesh(floorC(nNS1)+floor(nNS)+right(mNS)+ceilingC(nNS1)+ceiling(nNS)+left(mNS1)+C(-nCNS));
+Th = splitmesh(Th, 1 + (x<40 && x>20 && y<40 && y>20) );
+
+
+
+
+
+
+
+
+
+
+
+
+//savemesh(Th,"cylmeshcons.msh");
+
+
+
+real dt = 0.02;
+real nbiter = 24000;
+
+real uval = 0,pval=0;
+real vval = 0;
+real divval = 0;
+
+
+real deltap;
+real cd, cdVisc, cdConvec, cdPressure;
+real cl, clVisc, clConvec, clPressure;
+real maxcd, timemaxcd, maxcl, timemaxcl;
+
+
+
+// Define the finite element spaces.
+fespace Xh(Th,P3);
+fespace Qh(Th,P2);
+
+// Velocity variables
+Xh u2,v2,un2,unn2,e2,wbar1,wbar2,wn1,wn2,w1,w2,wb1,wb2,temp1,temp2,v3,v4,vv1,vv2,phiTest1,phiTest2;
+Xh u1,v1,un1,unn1,e1,phi1,phi2,up1,up2,unnn1,unnn2;
+Qh pm=0, p=0, q, lambda;
+Xh u1f,u2f,v1f,v2f,Ggw1,Ggw2, v1lift,v2lift,v1drag,v2drag;
+Qh qf,pf;
+
+cout<< u1.n << endl;
+cout << p.n << endl;
+
+
+
+
+
+real Re=500.0;
+real nu=2.0/Re;
+real t=0;
+
+u1 = 0; u2 = 0;
+un1=u1; un2=u2;
+w1=0;
+w2=0;
+u1f=0;
+u2f=0;
+phi1=0;
+phi2=0;
+
+int itnl=0,iter=0,MaxNlIt=30;
+
+int n=100,m=100;
+real[int] xvec(n);
+real[int] yvec(m);
+  for (int ix = 0; ix < n ; ix++){
+     for (int iy = 0; iy < m ; iy++){
+          xvec[ix]=2.2*ix/(n-1);
+          yvec[iy]=0.41*iy/(m-1);
+     }
+  }
+
+
+
+problem BDF3NSENewtEMAC ([u1,u2,p],[v1,v2,q],solver=UMFPACK) =
+    int2d(Th,qft=qf7pT)(
+            	11.0/6.0/dt * ( u1*v1 + u2*v2 )
+            	- p * ( dx(v1) + dy(v2) )
+//            	+ nu * ( dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2) )
+            	+ 2*nu * ( dx(u1)*dx(v1) + 0.5*(dy(u1)+dx(u2))*(dy(v1)+dx(v2)) + dy(u2)*dy(v2) )
+		+ q * (dx(u1) + dy(u2))
+		+ p*q*(0.0000000001)
+
+		+   (dx(up1)+dy(up2))*(u1*v1+u2*v2)
+		+   (dx(u1)+dy(u2))*(up1*v1+up2*v2)
+
+		+ 2.0* (  v1*( up1*dx(u1) + up2*(dy(u1)+dx(u2))/2  ) + v2*( up1*(dy(u1)+dx(u2))/2 + up2*dy(u2)  ) )
+		+ 2.0* (  v1*( u1*dx(up1) + u2*(dy(up1)+dx(up2))/2 ) + v2*( u1*(dy(up1)+dx(up2))/2 + u2*dy(up2) ) )
+	    )
+    + int2d(Th,qft=qf7pT)(
+		-3.0 / dt * (un1 * v1 + un2*v2)
+		+1.5 / dt * (unn1 * v1 + unn2*v2)
+		-1.0/3.0 / dt * (unnn1 * v1 + unnn2*v2)
+
+		-  (dx(up1)+dy(up2))*(up1*v1+up2*v2)
+
+		- 2.0* (  v1*( up1*dx(up1) + up2*(dy(up1)+dx(up2))/2 ) + v2*( up1*(dy(up1)+dx(up2))/2 + up2*dy(up2) ) )
+	       )
+	+ on(4,8,1,11,5,111, u1 = 1, u2 = 0)
+	+ on(99, u1=0, u2=0);
+
+
+
+problem BDF2NSENewtEMAC ([u1,u2,p],[v1,v2,q],solver=UMFPACK) =
+    int2d(Th,qft=qf7pT)(
+                1.5/dt * ( u1*v1 + u2*v2 )
+                - p * ( dx(v1) + dy(v2) )
+//                + nu * ( dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2) )
+                + 2*nu * ( dx(u1)*dx(v1) + 0.5*(dy(u1)+dx(u2))*(dy(v1)+dx(v2)) + dy(u2)*dy(v2) )
+        + q * (dx(u1) + dy(u2))
+        + p*q*(0.0000000001)
+
+        +   (dx(up1)+dy(up2))*(u1*v1+u2*v2)
+        +   (dx(u1)+dy(u2))*(up1*v1+up2*v2)
+
+        + 2.0* (  v1*( up1*dx(u1) + up2*(dy(u1)+dx(u2))/2  ) + v2*( up1*(dy(u1)+dx(u2))/2 + up2*dy(u2)  ) )
+        + 2.0* (  v1*( u1*dx(up1) + u2*(dy(up1)+dx(up2))/2 ) + v2*( u1*(dy(up1)+dx(up2))/2 + u2*dy(up2) ) )
+        )
+    + int2d(Th,qft=qf7pT)(
+        -2.0 / dt * (un1 * v1 + un2*v2)
+        +0.5 / dt * (unn1 * v1 + unn2*v2)
+
+        -  (dx(up1)+dy(up2))*(up1*v1+up2*v2)
+
+        - 2.0* (  v1*( up1*dx(up1) + up2*(dy(up1)+dx(up2))/2 ) + v2*( up1*(dy(up1)+dx(up2))/2 + up2*dy(up2) ) )
+           )
+	+ on(4,8,1,11,5,111, u1 = 1, u2 = 0)
+	+ on(99, u1=0, u2=0);
+
+
+
+
+
+problem CNNSENewtConv ([u1,u2,p],[v1,v2,q],solver=UMFPACK) =
+// use wbar1 and wbar2 as the filtered extrapolated term
+    int2d(Th)(
+             	1.0/dt * ( u1*v1 + u2*v2 )
+            	- p * ( dx(v1) + dy(v2) )
+            	+ 0.5* nu * ( dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2) )
+
+  		+ 0.25 *  (v1 * (un1 * dx(u1) + un2 * dy(u1)) + v2 * (un1 * dx(u2) + un2 * dy(u2)))
+  		+ 0.25 *  (v1 * (u1 * dx(un1) + u2 * dy(un1)) + v2 * (u1 * dx(un2) + u2 * dy(un2)))
+
+  		+ 0.25 *  (v1 * (up1 * dx(u1) + up2 * dy(u1)) + v2 * (up1 * dx(u2) + up2 * dy(u2)))
+  		+ 0.25 *  (v1 * (u1 * dx(up1) + u2 * dy(up1)) + v2 * (u1 * dx(up2) + u2 * dy(up2)))
+
+		+ q * (dx(u1) + dy(u2))
+		+ p*q*(0.0000000001) 
+	    )
+    + int2d(Th)(
+		-1.0 / dt * (un1 * v1 + un2*v2)
+ 		+ 0.5 * nu * ( dx(un1)*dx(v1) + dy(un1)*dy(v1) + dx(un2)*dx(v2) + dy(un2)*dy(v2) ) 
+
+		+ 0.25 * (v1 * (un1 * dx(un1) + un2 * dy(un1)) + v2 * (un1 * dx(un2) + un2 * dy(un2)))
+
+		- 0.25 * (v1 * (up1 * dx(up1) + up2 * dy(up1)) + v2 * (up1 * dx(up2) + up2 * dy(up2)))
+
+	       )
+	+ on(4,8,1,11,5,111, u1 = 1, u2 = 0)
+	+ on(99, u1=0, u2=0);
+
+
+
+
+problem getPhi1([vv1,vv2,lambda], [phiTest1,phiTest2,q], solver = UMFPACK) =  //get Phi1 such that phi1 = 1 on 99 & 0 on others
+	int2d(Th)(
+		dx(vv1)*dx(phiTest1) + dy(vv1)*dy(phiTest1) + dx(vv2)*dx(phiTest2) + dy(vv2)*dy(phiTest2)
+		+ lambda * (dx(phiTest1) + dy(phiTest2) )
+		+ 10* (dx(vv1)+dy(vv2) ) * (dx(phiTest1) + dy(phiTest2) )
+		+ ( dx(vv1) + dy(vv2) ) * q
+		+ 0.000001 * lambda * q 
+	)
+	+ on(99, vv1 = 1, vv2 = 0)  //phi2 = 0 on all borders
+	+ on(4, 8, 1, 11, 5, 111, vv1 = 0, vv2 = 0);
+problem getPhi2([vv1,vv2,lambda], [phiTest1,phiTest2,q], solver = UMFPACK) =  //get Phi1 such that phi1 = 1 on 99 & 0 on others
+	int2d(Th)(
+		dx(vv1)*dx(phiTest1) + dy(vv1)*dy(phiTest1) + dx(vv2)*dx(phiTest2) + dy(vv2)*dy(phiTest2)
+		+ lambda * (dx(phiTest1) + dy(phiTest2) )
+		+ 10* (dx(vv1)+dy(vv2) ) * (dx(phiTest1) + dy(phiTest2) )
+		+ ( dx(vv1) + dy(vv2) ) * q
+		+ 0.000001 * lambda * q 
+	)
+	+ on(99, vv1 = 0, vv2 = 1)  //phi2 = 0 on all borders
+	+ on(4, 8, 1, 11, 5, 111, vv1 = 0, vv2 = 0);
+
+
+vv1=0;
+vv2=0;
+getPhi1;
+v1drag=vv1;
+v2drag=vv2;
+getPhi2;
+v1lift=vv1;
+v2lift=vv2;
+
+
+
+
+int itnewt;
+real diff;
+un1=u1;
+un2=u2;
+unn1=u1;
+unn2=u2;
+unnn1=u1;
+unnn2=u2;
+
+
+
+for (iter=1;iter<=3;iter++)
+{
+
+//	cout<< "***********************************************************************"<<endl;
+//	cout<< "Timestep = " << iter << " " << u1[].n << " " << p[].n <<endl;
+
+	t = dt*iter;
+	
+
+
+	// evolve the fluid
+	unnn1=unn1;
+	unnn2=unn2;
+	unn1=un1;
+	unn2=un2;
+	un1 = u1;
+	un2 = u2;
+
+	for(itnewt=1;itnewt<=5;itnewt++){
+		up1 = u1;
+		up2 = u2;
+		CNNSENewtConv;
+		e1 = u1 - up1;
+		e2 = u2 - up2;
+		diff = sqrt( int2d(Th)( e1*e1 + e2*e2)  );
+//		cout << "NewtIt=" <<itnewt<<", diff=" << diff << endl;
+		if(diff< 0.00000001){
+			break;
+		}
+	}
+	
+
+}
+
+int resetcount=3;
+for (iter=4;iter<=nbiter;iter++)
+{
+
+//	cout<< "***********************************************************************"<<endl;
+//	cout<< "Timestep = " << iter << " " << u1[].n << " " << p[].n <<endl;
+
+	t = dt*iter;
+ 
+
+
+	unnn1=unn1;
+	unnn2=unn2;
+	unn1=un1;
+	unn2=un2;
+	un1 = u1;
+	un2 = u2;
+
+	for(itnewt=1;itnewt<=10;itnewt++){
+		up1 = u1;
+		up2 = u2;
+
+        BDF3NSENewtEMAC;
+
+		e1 = u1 - up1;
+		e2 = u2 - up2;
+		diff = sqrt( int2d(Th)( e1*e1 + e2*e2)  );
+//		cout << "NewtIt=" <<itnewt<<", diff=" << diff << endl;
+		if(diff< 0.00000001){
+			break;
+		}
+	}
+
+
+
+
+
+
+  cdVisc = int2d(Th)(nu * ( dx(u1)*dx(v1drag) + dy(u1)*dy(v1drag)+ dx(u2)*dx(v2drag) + dy(u2)*dy(v2drag) ));
+  cdPressure = int2d(Th)(  p * (dx(v1drag) + dy(v2drag)) );
+  cdConvec = int2d(Th)(  (dx(u1)+dy(u2))*(u1*v1drag+u2*v2drag)
+		+ 2* ( v1drag * ( u1*dx(u1) + u2*(dy(u1)+dx(u2))/2 )
+			+ v2drag * ( u1*(dy(u1)+dx(u2))/2 + u2*dy(u2) ) ) );
+  cd = -2.*(int2d(Th)((11.0/6.0*u1 - 3*un1 + 1.5*unn1 - 1.0/3.0*unnn1)*v1drag/dt
+		     + (11.0/6.0*u2 - 3*un2 + 1.5*unn2 - 1.0/3.0*unnn2)*v2drag/dt)+cdVisc+cdConvec-cdPressure);
+
+  clVisc = int2d(Th)(nu * ( dx(u1)*dx(v1lift) + dy(u1)*dy(v1lift)
+            +          dx(u2)*dx(v2lift) + dy(u2)*dy(v2lift) ));
+  clPressure = int2d(Th)(  p * (dx(v1lift) + dy(v2lift)) );
+
+
+  clConvec = int2d(Th)(  (dx(u1)+dy(u2))*(u1*v1lift+u2*v2lift)
+		+ 2* ( v1lift * ( u1*dx(u1) + u2*(dy(u1)+dx(u2))/2 )
+			+ v2lift * ( u1*(dy(u1)+dx(u2))/2 + u2*dy(u2) ) ) );
+
+  cl = -2.*(int2d(Th)((11.0/6.0*u1 - 3*un1 + 1.5*unn1 - 1.0/3.0*unnn1)*v1lift/dt
+		     + (11.0/6.0*u2 - 3*un2 + 1.5*unn2 - 1.0/3.0*unnn2)*v2lift/dt)+clVisc+clConvec-clPressure);
+
+  deltap = p(0.15,0.2)-p(0.25,0.2);
+
+  real diverr = sqrt(int2d(Th)( ( dx(u1)+dy(u2) )^2 ) );
+  cout << t << " " << cd << " " << cl << " " << deltap << " " << diverr << endl;
+//deltap means pressure drop between left side of the cylinder and right side of the cylinder
+
+
+  if (cd > maxcd){
+      maxcd = cd;
+      timemaxcd = t;
+  }
+
+  if (cl > maxcl) {
+      maxcl = cl;
+      timemaxcl = t;
+  }
+
+//  cout<< maxcd << " " <<timemaxcd << " " <<maxcl << " " <<timemaxcl<<endl;
+
+
+
+	real m1,m2,am;
+ Xh vort = dx(u2)-dy(u1);
+
+	if (iter==1000 || iter==2000 || iter==3000 || iter==4000 || iter==5000 ){
+		
+		ofstream myn("CylDataLocalEMAC" + iter + ".dat") ;
+		
+		for (int ix = 0; ix < xvec.n ; ix++){
+           		for (int iy = 0; iy < yvec.n ; iy++){
+					uval = u1(xvec[ix],yvec[iy]) ;
+					vval = u2(xvec[ix],yvec[iy]) ;
+					pval = p(xvec[ix],yvec[iy]) ;
+					m1 = vort(xvec[ix],yvec[iy]) ;
+     				m2 = dx(u2)(xvec[ix],yvec[iy]) - dy(u1)(xvec[ix],yvec[iy]);
+         			am = 0;
+            
+			myn << xvec[ix] << "  " << yvec[iy]  << "  " << uval << "  " << vval << "  " << pval << "  " << m1 << "  " << m2 << 
+				"  "  << am << endl;
+			}
+		}
+	}
+ 
+
+
+
+ }
+

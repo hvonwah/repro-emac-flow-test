@@ -1,0 +1,4 @@
+ArrayTaskID Re k h mesh dt conv
+1 500 3 8 1 0.003 EMAC
+2 500 3 4 1 0.0015 EMAC
+3 500 3 2 1 0.00075 EMAC
